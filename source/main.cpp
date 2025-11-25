@@ -25,13 +25,6 @@ const std::vector<const char*> requiredPhyDeviceExtensions = {
     vk::KHRCreateRenderpass2ExtensionName
 };
 
-std::vector<const char*> deviceExtensions = {
-    vk::KHRSwapchainExtensionName,
-    vk::KHRSpirv14ExtensionName,
-    vk::KHRSynchronization2ExtensionName,
-    vk::KHRCreateRenderpass2ExtensionName
-};
-
 class HelloTriangleApplication {
 public:
     void run() {
@@ -49,7 +42,7 @@ private:
     vk::raii::PhysicalDevice physicalDevice = nullptr;
     vk::raii::Device device = nullptr;
     vk::raii::Queue graphicsQueue = nullptr;
-    uint32_t graphicsQueueIndex = ~0;
+    uint32_t graphicsQfIndex = ~0;
     vk::raii::SwapchainKHR swapchain = nullptr;
     vk::SurfaceFormatKHR swapchainFormat{};
     vk::PresentModeKHR swapchainPresentMode{};
@@ -68,6 +61,7 @@ private:
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan tutorial", nullptr, nullptr);
     }
 
@@ -190,7 +184,7 @@ private:
     void createCommandPool() {
         vk::CommandPoolCreateInfo commandPoolInfo = {
             .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-            .queueFamilyIndex = graphicsQueueIndex
+            .queueFamilyIndex = graphicsQfIndex
         };
 
         commandPool = vk::raii::CommandPool(device, commandPoolInfo);
@@ -314,7 +308,7 @@ private:
     }
 
     void createSwapchainImageViews() {
-        swapchainImageViews.clear();
+        std::cout << "CREATING SWAPCHAIN IMAGE VIEWS:\n";
 
         vk::ImageViewCreateInfo imageViewInfo = {
             .viewType = vk::ImageViewType::e2D,
@@ -325,15 +319,20 @@ private:
         for(vk::Image const& im : swapchainImages) {
             imageViewInfo.image = im;
             swapchainImageViews.push_back(vk::raii::ImageView(device, imageViewInfo));
+            std::cout << "Image view created\n";
         }
+
+        std::cout << "SWAPCHAIN IMAGE VIEW CREATION FINISHED\n\n";
     }
 
     void createSwapchain() {
+        std::cout << "CREATING SWAPCHAIN:\n";
+
         vk::SurfaceCapabilitiesKHR capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
         std::vector<vk::SurfaceFormatKHR> formats = physicalDevice.getSurfaceFormatsKHR(surface);
         std::vector<vk::PresentModeKHR> presentModes = physicalDevice.getSurfacePresentModesKHR(surface);
 
-        uint32_t imageCount;
+        uint32_t imageCount = ~0;
 
         bool foundWantedFormat = false;
         for(vk::SurfaceFormatKHR const& f : formats) {
@@ -375,10 +374,13 @@ private:
             };
             std::cout << "Discrepency in extent vs screen coordinates, adjusting extent accordingly\n";
         }
+        std::cout << "Extent set to " << swapchainExtent.width << " by " << swapchainExtent.height << '\n';
 
         imageCount = capabilities.minImageCount + 1;
         if(capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
             imageCount = capabilities.maxImageCount;
+        } else {
+            std::cout << "Setting swapchain image count to least plus one for the surface, which in this case is " << imageCount << '\n';
         }
 
         vk::SwapchainCreateInfoKHR swapchainCreateInfo = {
@@ -400,27 +402,32 @@ private:
 
         swapchain = vk::raii::SwapchainKHR(device, swapchainCreateInfo);
         swapchainImages = swapchain.getImages();
-        std::cout << "Swapchain created with " << swapchainImages.size() << " images\n";
+        std::cout << "Swapchain created with " << swapchainImages.size() << " images and a whole lotta other parameters\n";
+
+        std::cout << "SWAPCHAIN CREATION FINISHED\n\n";
     }
 
     void createDevice() {
+        std::cout << "CREATING LOGICAL DEVICE:\n";
+
         std::vector<vk::QueueFamilyProperties> qfProperties = physicalDevice.getQueueFamilyProperties();
 
         for(uint32_t i = 0; i < qfProperties.size(); ++i) {
             if ((qfProperties[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
                 physicalDevice.getSurfaceSupportKHR(i, *surface)) {
-                graphicsQueueIndex = i;
-                std::cout << "Graphics queue that supports presenting to surface at " << graphicsQueueIndex << " found in " << physicalDevice.getProperties().deviceName << '\n';
+                graphicsQfIndex = i;
+                std::cout << "Graphics queue family that supports presenting to surface at index " << graphicsQfIndex << " found in " << physicalDevice.getProperties().deviceName << '\n';
                 break;
             }
         }
 
         float priority = 0.5f;
         vk::DeviceQueueCreateInfo queueCreateInfo = {
-            .queueFamilyIndex = graphicsQueueIndex,
+            .queueFamilyIndex = graphicsQfIndex,
             .queueCount = 1,
             .pQueuePriorities = &priority
         };
+        std::cout << "Made queue create info, one queue with arbitrary priority using queue family " << graphicsQfIndex << '\n';
 
         vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
             {},
@@ -428,39 +435,68 @@ private:
             {.synchronization2 = true, .dynamicRendering = true },    
             {.extendedDynamicState = true }
         };
+        std::cout << "Made structure chain with wanted features" << '\n';
 
         vk::DeviceCreateInfo deviceCreateInfo = {
             .pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
             .queueCreateInfoCount = 1,
             .pQueueCreateInfos = &queueCreateInfo,
-            .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
-            .ppEnabledExtensionNames = deviceExtensions.data()
+            .enabledExtensionCount = static_cast<uint32_t>(requiredPhyDeviceExtensions.size()),
+            .ppEnabledExtensionNames = requiredPhyDeviceExtensions.data()
         };
 
         device = vk::raii::Device(physicalDevice, deviceCreateInfo);
         std::cout << "Logical device created for " << physicalDevice.getProperties().deviceName << '\n';
 
-        graphicsQueue = vk::raii::Queue(device, graphicsQueueIndex, 0);
+        graphicsQueue = vk::raii::Queue(device, graphicsQfIndex, 0);
+        std::cout << "Queue object created at qf index " << graphicsQfIndex << " and queue 0" << '\n';
+
+        std::cout << "LOGICAL DEVICE CREATION FINISHED\n\n";
     }
 
     void pickPhysicalDevice() {
+        std::cout << "PICKING PHYSICAL DEVICE:\n";
+
         std::vector<vk::raii::PhysicalDevice> phyDevices = instance.enumeratePhysicalDevices();
 
-        for(vk::raii::PhysicalDevice const& d : phyDevices) {
+        for(vk::raii::PhysicalDevice const& d : phyDevices) {  
             uint32_t suitability = 0;
 
             if (d.getProperties().apiVersion >= VK_API_VERSION_1_3) {
                 suitability++;
-                std::cout << "Vulkan version supported" << '\n';
+                std::cout << d.getProperties().deviceName << ":" << "Vulkan version supported" << '\n';
             }
 
             std::vector<vk::QueueFamilyProperties> qfProperties = d.getQueueFamilyProperties();
+
+            bool hasGraphicsQueueFamily = false;
             for(vk::QueueFamilyProperties const& qf : qfProperties) {
-                if (qf.queueFlags & vk::QueueFlagBits::eGraphics) {
-                    suitability++;
-                    std::cout << "Graphics card supports graphics" << '\n';
-                    break;
+                if(qf.queueFlags & vk::QueueFlagBits::eGraphics) {
+                    std::cout << d.getProperties().deviceName << ":" << "Graphics queue family with " << qf.queueCount << " queues found" << '\n';
+                    hasGraphicsQueueFamily = true;
+                } else if(qf.queueFlags & vk::QueueFlagBits::eCompute) {
+                    std::cout << d.getProperties().deviceName << ":" << "Compute queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eDataGraphARM) {
+                    std::cout << d.getProperties().deviceName << ":" << "Data graph queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eOpticalFlowNV) {
+                    std::cout << d.getProperties().deviceName << ":" << "Optical flow queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eProtected) {
+                    std::cout << d.getProperties().deviceName << ":" << "Protected queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eSparseBinding) {
+                    std::cout << d.getProperties().deviceName << ":" << "Sparse binding queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eTransfer) {
+                    std::cout << d.getProperties().deviceName << ":" << "Transfer queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eVideoDecodeKHR) {
+                    std::cout << d.getProperties().deviceName << ":" << "Video decode queue family with " << qf.queueCount << " queues found" << '\n';
+                } else if (qf.queueFlags & vk::QueueFlagBits::eVideoEncodeKHR) {
+                    std::cout << d.getProperties().deviceName << ":" << "Video encode queue family with " << qf.queueCount << " queues found" << '\n';
+                } else {
+                    std::cout << d.getProperties().deviceName << ":" << "???" << '\n';
                 }
+            }
+            if(hasGraphicsQueueFamily) {
+                suitability++;
+                std::cout << d.getProperties().deviceName << ":" << "Has graphics queue family" << '\n';
             }
 
             bool hasRequiredExtensions = true;
@@ -479,7 +515,7 @@ private:
             }
 
             if (hasRequiredExtensions) {
-                std::cout << "Graphics card extensions supported" << '\n';
+                std::cout << d.getProperties().deviceName << ":" << "All required extensions supported" << '\n';
                 suitability++;
             }
 
@@ -491,7 +527,7 @@ private:
                 features.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
             if (hasRequiredFeatures) {
-                std::cout << "Graphics card features supported" << '\n';
+                std::cout << d.getProperties().deviceName << ":" << "Required features supported" << '\n';
                 suitability++;
             }
 
@@ -503,18 +539,25 @@ private:
         }
 
         if (physicalDevice == nullptr) throw std::runtime_error("No suitable graphics card found");
+
+        std::cout << "PHYSICAL DEVICE SELECTION FINISHED" << "\n\n";
     }
 
     void createSurface() {
+        std::cout << "CREATING VULKAN SURFACE USING GLFW:" << '\n';
         VkSurfaceKHR cSurface;
+
         if (glfwCreateWindowSurface(*instance, window, nullptr, &cSurface) != 0) {
             throw std::runtime_error("Failed to create window surface");
         }
+
         surface = vk::raii::SurfaceKHR(instance, cSurface);
-        std::cout << "Created surface for windows" << '\n';
+        std::cout << "CREATED VULKAN WINDOWS SURFACE" << "\n\n";
     }
 
     void createInstance() {
+        std::cout << "CREATING VULKAN INSTANCE:" << '\n';
+
         vk::ApplicationInfo appInfo{
             .pApplicationName = "Vulkan tutorial",
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -523,24 +566,21 @@ private:
             .apiVersion = vk::ApiVersion14
         };
 
-        std::vector<const char*> requiredValLayers;
         if(enableValidationLayers) {
-            requiredValLayers = requiredValidationLayers;
-
             std::vector<vk::LayerProperties> layerProperties = context.enumerateInstanceLayerProperties();
 
-            for (uint32_t i = 0; i < requiredValLayers.size(); ++i) {
+            for (uint32_t i = 0; i < requiredValidationLayers.size(); ++i) {
                 bool found = false;
 
                 for (vk::LayerProperties const& property : layerProperties) {
-                    if (strcmp(property.layerName, requiredValLayers[i]) == 0) {
+                    if (strcmp(property.layerName, requiredValidationLayers[i]) == 0) {
                         found = true;
                         break;
                     }
                 }
 
-                if(!found) throw std::runtime_error("Required validation layer not supported:" + std::string(requiredValLayers[i]));
-                else std::cout << "Required validation layer supported:" + std::string(requiredValLayers[i]) << '\n';
+                if(!found) throw std::runtime_error("Required validation layer not supported:" + std::string(requiredValidationLayers[i]));
+                else std::cout << "Required validation layer supported:" + std::string(requiredValidationLayers[i]) << '\n';
             }
         }
 
@@ -566,8 +606,8 @@ private:
         if(enableValidationLayers) {
             vk::InstanceCreateInfo info{
                 .pApplicationInfo = &appInfo,
-                .enabledLayerCount = static_cast<uint32_t>(requiredValLayers.size()),
-                .ppEnabledLayerNames = requiredValLayers.data(),
+                .enabledLayerCount = static_cast<uint32_t>(requiredValidationLayers.size()),
+                .ppEnabledLayerNames = requiredValidationLayers.data(),
                 .enabledExtensionCount = glfwExtensionCount,
                 .ppEnabledExtensionNames = glfwExtensions,
             };
@@ -584,6 +624,8 @@ private:
         }
 
         instance = vk::raii::Instance(context, instanceCreateInfo);
+
+        std::cout << "VULKAN INSTANCE CREATED" << "\n\n";
     }
 
     void mainLoop() {

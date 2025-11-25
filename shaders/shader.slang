@@ -1,5 +1,5 @@
 static float2 positions[3] = float2[](
-    float2(0.0, -0.5),
+    float2(0.0, -1.5),
     float2(0.5, 0.5),
     float2(-0.5, 0.5)
 );
@@ -24,7 +24,7 @@ VertexOutput vertMain(uint vid : SV_VertexID) {
 }
 
 [shader("fragment")]
-float4 fragMain(VertexOutput inVert) : SV_Target {
-    float3 color = inVert.color;
+float4 fragMain(VertexOutput interpolatedIn) : SV_Target {
+    float3 color = interpolatedIn.color;
     return float4(color, 1.0);
 }
